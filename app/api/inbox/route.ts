@@ -2,6 +2,7 @@ import { inboxKey } from '@/lib/storage-keys';
 import { storage } from '@/lib/storage';
 import { NextResponse } from 'next/server';
 import { RETENTION_SETTINGS_KEY } from '@/lib/admin-auth';
+import { fetchFromImap } from '@/lib/imap-fetch';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,11 +46,33 @@ export async function GET(req: Request) {
 
   try {
     await cleanupExpiredMessages(address);
+
+    const existing = await storage.lrange(inboxKey(address), 0, -1);
+    const existingSourceIds = new Set(
+      (existing || [])
+        .map((item) => (item && typeof item === 'object' ? (item as { sourceId?: string }).sourceId : undefined))
+        .filter((value): value is string => Boolean(value))
+    );
+
+    const imapEmails = await fetchFromImap(address, existingSourceIds);
+    const retentionSeconds = await getRetentionSeconds();
+    const thresholdMs = Date.now() - retentionSeconds * 1000;
+    const freshImapEmails = imapEmails.filter((email) => {
+      const ts = new Date(email.receivedAt).getTime();
+      return Number.isFinite(ts) && ts >= thresholdMs;
+    });
+    if (freshImapEmails.length > 0) {
+      for (const email of freshImapEmails) {
+        await storage.lpush(inboxKey(address), email);
+      }
+      await storage.expire(inboxKey(address), retentionSeconds);
+    }
+
     const emails = await storage.lrange(inboxKey(address), 0, -1);
-    return NextResponse.json({ emails: emails || [] });
+    return NextResponse.json({ emails: emails || [] }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('Inbox Error:', error);
-    return NextResponse.json({ emails: [] }, { status: 200 });
+    return NextResponse.json({ emails: [] }, { status: 200, headers: { 'Cache-Control': 'no-store' } });
   }
 }
 

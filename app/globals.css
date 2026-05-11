@@ -72,3 +72,71 @@
     border: 1px solid rgba(255, 255, 255, 0.05);
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
+
+
+/* Email preview responsiveness */
+.email-content,
+.email-content * {
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+
+.email-content table {
+  display: block;
+  width: 100% !important;
+  overflow-x: auto;
+}
+
+.email-content img,
+.email-content iframe,
+.email-content video {
+  height: auto !important;
+}
+
+.email-content pre,
+.email-content code {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+
+.email-content {
+  font-size: 14px;
+  line-height: 1.45;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.email-content td,
+.email-content th,
+.email-content p,
+.email-content span,
+.email-content a,
+.email-content div {
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 768px) {
+  .email-content {
+    font-size: 16px;
+  }
+}
+
+.email-content a,
+.email-content button {
+  max-width: 100% !important;
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.email-content [style*="width"],
+.email-content [width] {
+  max-width: 100% !important;
+}
+
+.email-content * {
+  min-width: 0 !important;
+}

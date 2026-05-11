@@ -31,6 +31,8 @@ type RetentionSettings = {
 
 type BrandingSettings = {
   appName: string;
+  headerTitle?: string;
+  headerDescription?: string;
 };
 
 type HomepageLockSettings = {
@@ -41,6 +43,17 @@ type HomepageLockSettings = {
 
 type DomainsSettings = {
   domains: string[];
+};
+
+type ImapSettings = {
+  enabled: boolean;
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  tls: boolean;
+  rejectUnauthorized: boolean;
+  maxFetch: number;
 };
 
 type AdminStats = {
@@ -66,6 +79,8 @@ export function AdminDashboard() {
   const [brandingSaving, setBrandingSaving] = useState(false);
   const [domainsSaving, setDomainsSaving] = useState(false);
   const [appName, setAppName] = useState(DEFAULT_APP_NAME);
+  const [headerTitle, setHeaderTitle] = useState('Temp Mail');
+  const [headerDescription, setHeaderDescription] = useState('Spin up secure temporary inboxes in seconds. Bring your own domain or use the default.');
   const [homepageLockEnabled, setHomepageLockEnabled] = useState(false);
   const [homepageLockPassword, setHomepageLockPassword] = useState('');
   const [homepageLockSaving, setHomepageLockSaving] = useState(false);
@@ -78,6 +93,9 @@ export function AdminDashboard() {
   const [cleanupRunning, setCleanupRunning] = useState(false);
   const [deleteInboxRunning, setDeleteInboxRunning] = useState(false);
   const [deleteAllRunning, setDeleteAllRunning] = useState(false);
+  const [imapSettings, setImapSettings] = useState<ImapSettings>({ enabled: false, host: '', port: 993, user: '', password: '', tls: true, rejectUnauthorized: true, maxFetch: 30 });
+  const [imapSaving, setImapSaving] = useState(false);
+  const [imapTesting, setImapTesting] = useState(false);
 
   const retentionOptions = useMemo(
     () => [
@@ -98,20 +116,23 @@ export function AdminDashboard() {
         retentionResponse,
         brandingResponse,
         domainsResponse,
-        homepageLockResponse
+        homepageLockResponse,
+        imapResponse
       ] = await Promise.all([
         fetch('/api/admin/telegram'),
         fetch('/api/admin/retention'),
         fetch('/api/admin/branding'),
         fetch('/api/admin/domains'),
-        fetch('/api/admin/homepage-lock')
+        fetch('/api/admin/homepage-lock'),
+        fetch('/api/admin/imap')
       ]);
       if (
         !telegramResponse.ok ||
         !retentionResponse.ok ||
         !brandingResponse.ok ||
         !domainsResponse.ok ||
-        !homepageLockResponse.ok
+        !homepageLockResponse.ok ||
+        !imapResponse.ok
       ) {
         throw new Error('Unauthorized or failed to load settings.');
       }
@@ -122,6 +143,7 @@ export function AdminDashboard() {
       const domainsData = (await domainsResponse.json()) as DomainsSettings;
       const homepageLockData =
         (await homepageLockResponse.json()) as HomepageLockSettings;
+      const imapData = (await imapResponse.json()) as ImapSettings;
       setEnabled(Boolean(data.enabled));
       setBotToken(data.botToken || '');
       setChatId(data.chatId || '');
@@ -136,11 +158,12 @@ export function AdminDashboard() {
       if (retentionData?.seconds) {
         setRetentionSeconds(retentionData.seconds);
       }
-      if (brandingData?.appName) {
-        setAppName(brandingData.appName);
-      }
+      if (brandingData?.appName) setAppName(brandingData.appName);
+      if (brandingData?.headerTitle) setHeaderTitle(brandingData.headerTitle);
+      if (brandingData?.headerDescription) setHeaderDescription(brandingData.headerDescription);
       setHomepageLockEnabled(Boolean(homepageLockData?.enabled));
       setHomepageLockHasPassword(Boolean(homepageLockData?.hasPassword));
+      setImapSettings({ ...imapSettings, ...imapData });
     } catch (error) {
       console.error(error);
       toast.error('Failed to load admin settings.');
@@ -225,7 +248,7 @@ export function AdminDashboard() {
       const response = await fetch('/api/admin/branding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appName })
+        body: JSON.stringify({ appName, headerTitle, headerDescription })
       });
       if (!response.ok) {
         throw new Error('Unauthorized or failed to save branding.');
@@ -267,6 +290,50 @@ export function AdminDashboard() {
       toast.error('Failed to save homepage lock.');
     } finally {
       setHomepageLockSaving(false);
+    }
+  };
+
+
+
+  const saveImapSettings = async () => {
+    setImapSaving(true);
+    try {
+      const response = await fetch('/api/admin/imap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(imapSettings)
+      });
+      if (!response.ok) throw new Error('Unauthorized or failed to save IMAP settings.');
+      const data = (await response.json()) as ImapSettings;
+      setImapSettings((prev) => ({ ...prev, ...data }));
+      toast.success('IMAP settings saved.');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to save IMAP settings.');
+    } finally {
+      setImapSaving(false);
+    }
+  };
+
+
+  const testImapSettings = async () => {
+    setImapTesting(true);
+    try {
+      const response = await fetch('/api/admin/imap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...imapSettings, action: 'test' })
+      });
+      const data = (await response.json()) as { success?: boolean; error?: string };
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'IMAP test failed');
+      }
+      toast.success('IMAP test berhasil. Koneksi valid.');
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? `IMAP test gagal: ${error.message}` : 'IMAP test gagal.');
+    } finally {
+      setImapTesting(false);
     }
   };
 
@@ -443,10 +510,10 @@ export function AdminDashboard() {
                 Admin Dashboard
               </p>
               <h1 className="text-3xl font-semibold text-white">
-                Pengaturan Telegram Channel
+                {headerTitle || "Temp Mail"}
               </h1>
               <p className="text-sm text-white/70">
-                Atur bot Telegram untuk mengirim notifikasi inbox baru.
+                {headerDescription || 'Spin up secure temporary inboxes in seconds. Bring your own domain or use the default.'}
               </p>
             </div>
             <Link
@@ -579,13 +646,25 @@ export function AdminDashboard() {
                 </Button>
               </div>
               <div className="mt-4">
-                <label className="text-xs font-semibold uppercase tracking-widest text-white/60">
-                  Nama Web
-                </label>
+                <label className="text-xs font-semibold uppercase tracking-widest text-white/60">Nama Web</label>
                 <Input
                   value={appName}
                   onChange={(event) => setAppName(event.target.value)}
                   placeholder={DEFAULT_APP_NAME}
+                  className="mt-3 bg-black/30 text-white placeholder:text-white/40"
+                />
+                <label className="mt-4 block text-xs font-semibold uppercase tracking-widest text-white/60">Title bawah header (opsional)</label>
+                <Input
+                  value={headerTitle}
+                  onChange={(event) => setHeaderTitle(event.target.value)}
+                  placeholder="Temp Mail"
+                  className="mt-3 bg-black/30 text-white placeholder:text-white/40"
+                />
+                <label className="mt-4 block text-xs font-semibold uppercase tracking-widest text-white/60">Deskripsi bawah header (opsional)</label>
+                <Input
+                  value={headerDescription}
+                  onChange={(event) => setHeaderDescription(event.target.value)}
+                  placeholder="Spin up secure temporary inboxes in seconds..."
                   className="mt-3 bg-black/30 text-white placeholder:text-white/40"
                 />
               </div>
@@ -822,6 +901,34 @@ export function AdminDashboard() {
               <p className="mt-4 text-xs text-white/50">
                 Pastikan bot sudah ditambahkan sebagai admin di channel.
               </p>
+            </div>
+
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">IMAP Fetch</h2>
+                  <p className="text-sm text-white/60">Alternatif webhook: ambil email dari IMAP (mis. Gmail).</p>
+                </div>
+                <Button variant={imapSettings.enabled ? 'default' : 'secondary'} onClick={() => setImapSettings((prev) => ({ ...prev, enabled: !prev.enabled }))}>
+                  {imapSettings.enabled ? 'Aktif' : 'Nonaktif'}
+                </Button>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <Input value={imapSettings.host} onChange={(e) => setImapSettings((p) => ({ ...p, host: e.target.value }))} placeholder="imap.gmail.com" className="bg-black/30 text-white placeholder:text-white/40" />
+                <Input value={String(imapSettings.port)} onChange={(e) => setImapSettings((p) => ({ ...p, port: Number(e.target.value || 993) }))} placeholder="993" className="bg-black/30 text-white placeholder:text-white/40" />
+                <Input value={imapSettings.user} onChange={(e) => setImapSettings((p) => ({ ...p, user: e.target.value }))} placeholder="gmail@domain.com" className="bg-black/30 text-white placeholder:text-white/40" />
+                <Input type="password" value={imapSettings.password} onChange={(e) => setImapSettings((p) => ({ ...p, password: e.target.value }))} placeholder="App Password" className="bg-black/30 text-white placeholder:text-white/40" />
+                <Input value={String(imapSettings.maxFetch)} onChange={(e) => setImapSettings((p) => ({ ...p, maxFetch: Number(e.target.value || 30) }))} placeholder="30" className="bg-black/30 text-white placeholder:text-white/40" />
+              </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <Button type="button" variant="secondary" onClick={testImapSettings} disabled={imapTesting || imapSaving}>
+                  {imapTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Test IMAP'}
+                </Button>
+                <Button onClick={saveImapSettings} disabled={imapSaving}>
+                  {imapSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Simpan IMAP'}
+                </Button>
+              </div>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-black/20 p-5">

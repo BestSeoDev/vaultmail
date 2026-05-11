@@ -64,6 +64,7 @@ export function InboxInterface({ initialAddress, locale, retentionLabel }: Inbox
   const [showFilter, setShowFilter] = useState(false);
   const [readEmailIds, setReadEmailIds] = useState<Set<string>>(new Set());
   const [deletingEmailId, setDeletingEmailId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const previousEmailIds = useRef<Set<string>>(new Set());
   const hasLoadedEmails = useRef(false);
 
@@ -398,7 +399,7 @@ export function InboxInterface({ initialAddress, locale, retentionLabel }: Inbox
     if (!address) return;
     try {
       setLoading(true);
-      const res = await fetch(`/api/inbox?address=${encodeURIComponent(address)}`);
+      const res = await fetch(`/api/inbox?address=${encodeURIComponent(address)}&t=${Date.now()}`, { cache: 'no-store' });
       const data = await res.json();
       if (data.emails) {
         // Only update if changes to avoid jitter, or just replace for now
@@ -470,6 +471,23 @@ export function InboxInterface({ initialAddress, locale, retentionLabel }: Inbox
       );
     });
   }, [emails, filterQuery]);
+
+
+
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(filteredEmails.length / pageSize));
+  const paginatedEmails = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredEmails.slice(start, start + pageSize);
+  }, [currentPage, filteredEmails]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [address, filterQuery]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
 
   const emailCount = filterQuery ? filteredEmails.length : emails.length;
   const unreadCount = emails.filter((email) => !readEmailIds.has(email.id)).length;
@@ -552,7 +570,7 @@ export function InboxInterface({ initialAddress, locale, retentionLabel }: Inbox
               .
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={`h-2 w-2 rounded-full ${loading ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'}`} />
             <span className="text-xs text-muted-foreground uppercase tracking-wider font-mono">
                 {loading ? t.syncing : t.live}
@@ -696,7 +714,7 @@ export function InboxInterface({ initialAddress, locale, retentionLabel }: Inbox
                                 <div className="w-full max-w-[22rem] rounded-2xl border border-white/10 bg-black/70 p-0 text-white shadow-2xl backdrop-blur-xl sm:w-80 sm:bg-zinc-900">
                                 <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/10 bg-black/60">
                                     <span className="text-xs font-bold tracking-wider uppercase text-muted-foreground">{t.historyTitle}</span>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                         {history.length > 0 && (
                                             <button 
                                                 onClick={() => {
@@ -845,7 +863,7 @@ export function InboxInterface({ initialAddress, locale, retentionLabel }: Inbox
                             <p>{filterQuery ? t.inboxFilterEmpty : t.waitingForIncoming}</p>
                         </motion.div>
                     ) : (
-                        filteredEmails.map((email) => {
+                        paginatedEmails.map((email) => {
                             const sender = getSenderInfo(email.from);
                             return (
                             <motion.div
@@ -897,17 +915,26 @@ export function InboxInterface({ initialAddress, locale, retentionLabel }: Inbox
                     )}
                 </AnimatePresence>
             </div>
+            {filteredEmails.length > pageSize && (
+              <div className="flex items-center justify-between border-t border-white/10 p-2 text-xs">
+                <span className="text-muted-foreground">Page {currentPage}/{totalPages}</span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" disabled={currentPage <= 1} onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}>Prev</Button>
+                  <Button size="sm" variant="ghost" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}>Next</Button>
+                </div>
+              </div>
+            )}
         </div>
 
         {/* Email Content */}
-        <div className="md:col-span-2 glass-card rounded-2xl overflow-hidden flex flex-col h-full min-h-[55vh] md:min-h-0 bg-black/40">
+        <div className="md:col-span-2 glass-card rounded-2xl overflow-hidden flex flex-col h-auto md:h-full min-h-[50vh] md:min-h-0 bg-black/40">
             {selectedEmail ? (
                 <div className="flex flex-col h-full">
                     {/* Header */}
-                    <div className="p-6 border-b border-white/5 space-y-4 bg-black/20">
+                    <div className="p-3 md:p-6 border-b border-white/5 space-y-3 md:space-y-4 bg-black/20">
                         <div className="flex flex-wrap items-start justify-between gap-3">
-                            <h1 className="text-xl font-bold text-white">{selectedEmail.subject}</h1>
-                            <div className="flex items-center gap-2">
+                            <h1 className="text-base md:text-xl font-bold text-white leading-snug">{selectedEmail.subject}</h1>
+                            <div className="flex items-center gap-2 flex-wrap">
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -965,10 +992,10 @@ export function InboxInterface({ initialAddress, locale, retentionLabel }: Inbox
                     </div>
                     
                     {/* Body */}
-                    <div className="flex-1 overflow-y-auto p-6 bg-white">
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-6 bg-white">
                         <div
                           onClick={handleEmailBodyClick}
-                          className="prose prose-base md:prose-lg max-w-none text-black prose-a:text-green-600 prose-a:underline hover:prose-a:text-green-700"
+                          className="email-content prose prose-sm md:prose-base lg:prose-lg max-w-none overflow-x-hidden break-words text-black prose-img:max-w-full prose-pre:overflow-x-auto prose-a:text-green-600 prose-a:underline hover:prose-a:text-green-700"
                           dangerouslySetInnerHTML={{
                             __html: highlightVerificationCodes(
                               resolveInlineImages(
