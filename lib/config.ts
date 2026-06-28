@@ -1,4 +1,4 @@
-export const DEFAULT_DOMAIN_FALLBACK = 'ysweb.biz.id';
+export const DEFAULT_DOMAIN_FALLBACK = 'ruficode.my.id';
 
 export const DEFAULT_DOMAINS: string[] = [];
 
